@@ -4,135 +4,114 @@
 var cheerio = require('cheerio');
 var webscraper = require('./webscrapper.js');
 var queries = require('./db/dbQueries.js');
-var $;
 
 
 /** MATCH DATA*/
+//Callback function given to webscraper with html of upcoming matches page
 var getMatchData= function (html){
-     //$ = cheerio.load(html);
+    var $ = cheerio.load(html);
     var table;
     var matches = [];
-    var maxPage=1;
-    var minPage = 1;
-    for(var i=minPage; i<=maxPage; i++){
-        $ = cheerio.load(html+i);
+    //upcoming matches is determined by specific h2 tag
+    $('h2').each(function(){
+        if($(this).html() === 'DotA 2 Upcoming Matches'){
+            table = $(this).next().children();
+        }
+    });
+    //each row in table holds match data
+    $('tr', table).each(function(i, data){
+
+        extractMatchInfo(data, $);
+    });
+};
+
+//Takes base url for matches page, finds amount of pages in upcoming matches
+//table, and scrapes each of the pages
+var mineMatches = function(url){
+    //This is used to find the number of pages in the upcoming matches table.
+    //after it is found, it will loop through the pages and scrape each one
+    webscraper.scrapeSite(url, function(html){
+        var $ = cheerio.load(html);
+        var table;
+
         $('h2').each(function(){
             if($(this).html() === 'DotA 2 Upcoming Matches'){
                 table = $(this).next().children();
-                //while parsing the first page, find max number of pages to parse
-                if(i==1)
-                    maxPage=findMaxPage(table);
             }
         });
-        $('tr', table).each(function(i, data){
+        //contains link to the last page of upcoming matches
+        var ahref =$( '.pages span', $(table).next()).parent()[1].attribs.href;
+        var numPattern = /\d+/g;
+        var max = ahref.match(numPattern);
+        max = max[max.length-1];
 
-            extractMatchInfo(data, matches);
-        });
-    }
-
-
-    //queries.storeMatchData(matches);
-};
-
-var findMaxPage = function(matchesTable){
-    var ahref =$( '.pages span', $(matchesTable).next()).parent()[1].attribs.href;
-    var numPattern = /\d+/g;
-    var max = ahref.match(numPattern);
-    max = max[max.length-1];
-    console.log(max);
-    return max;
-}
-
-var extractMatchInfo= function (match, matches){
-    var data = $('td', match);
-    var matchInfo = {};
-    getMatchTeams(data[0], matchInfo);
-    getMatchTime(data[1], matchInfo);
-    matches.push(matchInfo);
-    console.log(matchInfo);
-
-
-};
-
-var getMatchTeams = function(td, matchObj){
-    var opp1=clean($('.opp1 span' ,td).html());
-    var opp2=clean($('.opp2 span' ,td).not('.flag').html());
-    matchObj['opp1'] =opp1;
-    matchObj['opp2'] =opp2;
-};
-
-//takes the time until match string and converts it to milliseconds
-//and adds to current date to get starting time of game
-var getMatchTime = function(td, matchObj){
-    var timeUntil = $('.live-in', td).html().trim().split(' ');
-    var today = new Date();
-    var milliSeconds = 0;
-    for(var i in timeUntil){
-        var interval = timeUntil[i];
-        var unit = interval[interval.length-1];
-        var value = interval.substr(0, interval.length-1);
-        //converts time string to milliseconds
-        switch (unit){
-            case 'w':
-                milliSeconds += value*6.048e+8;
-                break;
-            case 'd':
-                milliSeconds += value*8.64e+7;
-                break;
-            case 'h':
-                milliSeconds += value*3600000;
-                break;
-            case 'm':
-                milliSeconds += value*60000;
-                break;
-            case 's':
-                milliSeconds += value*1000;
-                break;
+        //after number of pages is found, scrape each page and store data
+        for(var i=1; i<=max; i++){
+            webscraper.scrapeSite(url+ i.toString(), getMatchData);
         }
 
-    }
-    //console.log(matchTime);
-    matchObj['matchTime'] = roundTime(today.getTime()+milliSeconds);
+    });
+}
+
+var extractMatchInfo= function (match, $){
+    var data = $('td', match);
+    var matchInfo = {};
+    var matchPageLink = $('a', data)[0].attribs.href;
+    //scrapes page for specified match and extracts match info from it
+    webscraper.scrapeSite(matchPageLink, function(html){
+        var $ = cheerio.load(html);
+        var matchInfo = {};
+        matchInfo.opp1= clean($('.opponent1 h3 a').html());
+        matchInfo.opp2= clean($('.opponent2 h3 a').html());
+        //tells how many games the match series is
+        matchInfo.seriesLength = $('.bestof').html().split(' ')[2];
+        var matchDate = $('.datetime').html();
+        //converts match datetime string to js date object
+        matchInfo.matchTime = getMatchTime(matchDate);
+        queries.storeMatchData([matchInfo]);
+    });
 };
 
-//rounds given Date object to the nearest 5 minutes
-//to account of latency
-var roundTime = function(time){
-  var coeff = 1000*60*5;
-    return new Date(Math.round(time / coeff) * coeff);
+
+//Takes the match datetime string and converts to date
+//object in PST time
+var getMatchTime = function(dateTime){
+    var months = {
+        January     : 0,
+        February    : 1,
+        March       : 2,
+        April       : 3,
+        May         : 4,
+        June        : 5,
+        July        : 6,
+        August      : 7,
+        September   : 8,
+        October     : 9,
+        November    : 10,
+        December    : 11
+    };
+
+    var splitDateString = dateTime.split(' ');
+    var month,day,year,time,hour, minute;
+
+    month = months[splitDateString[0]];
+    day = splitDateString[1].substr(0, splitDateString[1].length-1);
+    year = splitDateString[2];
+    time = splitDateString[4].split(':');
+    hour=time[0]-1;     //subtract 1 to set to UTC (time is originally in CET - UTC+1 )
+    minute = time[1];
+    return new Date(Date.UTC(year, month, day, hour, minute));
+
 };
+
 
 var clean = function(string){
     //does some basic sanitizing of string from html page
   var regex = /&[apos]*;/g;
   string = string.replace(regex, "'");
-  string = string.replace('...', '');
   return string.trim();
 };
 
 /** END MATCH DATA SCRAP*/
 
-
-/**
- * TEAM LIST SCRAP
- */
-var getTeamList= function(html){
-    $ = cheerio.load(html);
-    var teamList = [];
-    $('.ranking-link td>h4>span>span').not('.flag').each(function(i,data){
-        teamList.push($(this).html());
-       // console.log($(this).html());
-    });
-    console.log(teamList.length);
-   // for(var i in teamList){
-        queries.storeTeamData(teamList);
-    //}
-};
-
-
-/**
- * END TEAM LIST SCRAP
- */
-
-webscraper.scrapeSite('/dota2/gosubet?u-page=', getMatchData);
-//webscraper.scrapeSite('/dota2/rankings?page=5', getTeamList);
+mineMatches('/dota2/gosubet?u-page=');

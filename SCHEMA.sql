@@ -12,7 +12,7 @@ CREATE TABLE MATCHES (
 	opp1 bigserial references TEAMS(id),
 	opp2 bigserial references TEAMS(id),
 	match_time timestamp,
+	series_length smallint,
 	match_status text
 );
-
-CREATE UNIQUE INDEX "unq_match" ON MATCHES (opp1,opp1,match_time);
+CREATE UNIQUE INDEX "unq_match" ON MATCHES (opp1,opp2,match_time);

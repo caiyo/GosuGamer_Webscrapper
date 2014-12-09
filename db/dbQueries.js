@@ -6,14 +6,14 @@ var asynch = require('async');
 
 var queries = {};
 queries.storeMatchData = function(matches) {
-    var query1 = "INSERT INTO MATCHES (OPP1, OPP2, MATCH_TIME, MATCH_STATUS) VALUES ($1, $2, $3, 'SCHEDULED')";
+    var query1 = "INSERT INTO MATCHES (OPP1, OPP2, MATCH_TIME, series_length, MATCH_STATUS) VALUES ($1, $2, $3, $4, 'SCHEDULED')";
     dbconnect.connect(function(err, client, done){
         if(err) console.log(err);
         else {
             asynch.map(matches, function (match, callback) {
                 var query2 = "SELECT t1.ID t1, t2.ID t2, " + match.matchTime.valueOf();
-                query2 += " match_time FROM TEAMS t1, TEAMS t2 where t1.TEAM_NAME like $1 and t2.TEAM_NAME like $2 LIMIT 1";
-                client.query(query2, [match['opp1'] + '%', match['opp2'] + '%'], function (err, result) {
+                query2 += " match_time FROM TEAMS t1, TEAMS t2 where t1.TEAM_NAME = $1 and t2.TEAM_NAME = $2 LIMIT 1";
+                client.query(query2, [match['opp1'], match['opp2']], function (err, result) {
                     if (err) {}
                     else {
                         var teams = result.rows[0];
@@ -24,7 +24,7 @@ queries.storeMatchData = function(matches) {
                             callback(err, result);
                         }
                         else {
-                            client.query(query1, [result.rows[0]['t1'], result.rows[0]['t2'], new Date(parseInt(result.rows[0]['match_time']))],
+                            client.query(query1, [result.rows[0]['t1'], result.rows[0]['t2'], new Date(parseInt(result.rows[0]['match_time'])), match.seriesLength],
                                 function (err, result) {
                                     if (err) console.log(err);
                                     else    console.log(result.rows.length + " rows inserted");
@@ -50,7 +50,6 @@ queries.storeTeamData = function (teamList) {
         if(err) console.log(err);
         else{
             var rowsInserted=0;
-            var errors = [];
             //query checks for Teams already in the table
             client.query(query1, function(err, result){
                 for(var i in result.rows) {
@@ -78,6 +77,4 @@ queries.storeTeamData = function (teamList) {
 
     });
 };
-
 module.exports = queries;
-
