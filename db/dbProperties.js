@@ -3,7 +3,7 @@ var properties = {
     password: 'poop',
     servername:'127.0.0.1',
     portNum: '',
-    database: 'mydb'
+    database: 'mydbtestestes'
 };
 
 module.exports = properties;
