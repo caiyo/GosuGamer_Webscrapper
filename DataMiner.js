@@ -68,14 +68,19 @@ var extractMatchInfo= function (match, $){
         var matchDate = $('.datetime').html();
         //converts match datetime string to js date object
         matchInfo.matchTime = getMatchTime(matchDate);
-        queries.storeMatchData([matchInfo]);
+        //queries.storeMatchData([matchInfo]);
+        console.log(matchInfo);
     });
 };
 
 
 //Takes the match datetime string and converts to date
 //object in PST time
+//datetime format: MONTH DAY, DAYOFWEEK, HOUR:MINUTE, TIMEZONE
+//ie: MARCH 30, Monday, 00:00 CET
 var getMatchTime = function(dateTime){
+    if(!dateTime)
+        return null;
     var months = {
         January     : 0,
         February    : 1,
@@ -90,14 +95,14 @@ var getMatchTime = function(dateTime){
         November    : 10,
         December    : 11
     };
-
+    dateTime=dateTime.replace(/,/g, "");
     var splitDateString = dateTime.split(' ');
     var month,day,year,time,hour, minute;
 
     month = months[splitDateString[0]];
-    day = splitDateString[1].substr(0, splitDateString[1].length-1);
-    year = splitDateString[2];
-    time = splitDateString[4].split(':');
+    day = splitDateString[1];
+    year = new Date().getUTCFullYear();
+    time = splitDateString[3].split(':');
     hour=time[0]-1;     //subtract 1 to set to UTC (time is originally in CET - UTC+1 )
     minute = time[1];
     return new Date(Date.UTC(year, month, day, hour, minute));
